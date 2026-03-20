@@ -1,11 +1,13 @@
 targetScope = 'subscription'
 
-// Parameters
-@description('Prefix for the resource group and resources')
-param resourcePrefix string = 'zava-agent-workshop'
+@minLength(1)
+@maxLength(64)
+@description('Name of the environment that can be used as part of naming resource convention')
+param environmentName string
 
-@description('Location of the resource group to create or use for the deployment')
-param location string = 'eastus'
+@minLength(1)
+@description('Primary location for all resources')
+param location string
 
 @description('Friendly name for your Azure AI resource')
 param aiProjectFriendlyName string = 'Agents standard project resource'
@@ -34,15 +36,20 @@ param models array = [
   }
 ]
 
-@description('Unique suffix for the resources')
-@maxLength(4)
-@minLength(0)
-param uniqueSuffix string = substring(uniqueString(subscription().id, resourcePrefix), 0, 4)
+@description('PostgreSQL admin password for the Container Apps deployment')
+@secure()
+param postgresPassword string
 
-var resourceGroupName = toLower('rg-${resourcePrefix}-${uniqueSuffix}')
+@description('Unique suffix for the resources')
+@maxLength(13)
+@minLength(0)
+param uniqueSuffix string = uniqueString(subscription().id, 'rg-${environmentName}', location)
+
+var resourceGroupName = toLower('rg-${environmentName}')
 
 var defaultTags = {
   source: 'Azure AI Foundry Agents Service lab'
+  'azd-env-name': toLower('${environmentName}')
 }
 
 var rootTags = union(defaultTags, tags)
@@ -51,12 +58,13 @@ var rootTags = union(defaultTags, tags)
 resource rg 'Microsoft.Resources/resourceGroups@2024-11-01' = {
   name: resourceGroupName
   location: location
+  tags: rootTags
 }
 
 // Calculate the unique suffix
 var aiProjectName = toLower('project-${uniqueSuffix}')
 var foundryResourceName = toLower('foundry-${uniqueSuffix}')
-var applicationInsightsName = toLower('appi-${resourcePrefix}-${uniqueSuffix}')
+var applicationInsightsName = toLower('appi-${uniqueSuffix}')
 
 module applicationInsights 'application-insights.bicep' = {
   name: 'application-insights-deployment'
@@ -110,6 +118,18 @@ module foundryModelDeployments 'foundry-model-deployment.bicep' = [for (model, i
   }
 }]
 
+module containerApps 'container-apps.bicep' = {
+  name: 'container-apps-deployment'
+  scope: rg
+  params: {
+    uniqueSuffix: uniqueSuffix
+    location: location
+    tags: rootTags
+    logAnalyticsWorkspaceId: applicationInsights.outputs.logAnalyticsWorkspaceId
+    postgresPassword: postgresPassword
+  }
+}
+
 // Outputs
 output subscriptionId string = subscription().subscriptionId
 output resourceGroupName string = rg.name
@@ -123,3 +143,7 @@ output deployedModels array = [for (model, index) in models: {
 output applicationInsightsName string = applicationInsights.outputs.applicationInsightsName
 output applicationInsightsConnectionString string = applicationInsights.outputs.connectionString
 output applicationInsightsInstrumentationKey string = applicationInsights.outputs.instrumentationKey
+output acrName string = containerApps.outputs.acrName
+output acrLoginServer string = containerApps.outputs.acrLoginServer
+output containerAppsEnvName string = containerApps.outputs.containerAppsEnvName
+output webAppUrl string = containerApps.outputs.webAppUrl

@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: ai-tour-26
+metadata:
+  template: zava-agent-workshop
+services:
+  web-app:
+    project: ./src/python/web_app
+    host: containerapp
+    language: python
+    docker:
+      path: ./Dockerfile
+      context: ../../..
+      remoteBuild: true
+  mcp-customer-sales:
+    project: ./src/python/mcp_server/customer_sales
+    host: containerapp
+    language: python
+    docker:
+      path: ./Dockerfile
+      context: ../../../..
+      remoteBuild: true
+  mcp-sales-analysis:
+    project: ./src/python/mcp_server/sales_analysis
+    host: containerapp
+    language: python
+    docker:
+      path: ./Dockerfile
+      context: ../../../..
+      remoteBuild: true

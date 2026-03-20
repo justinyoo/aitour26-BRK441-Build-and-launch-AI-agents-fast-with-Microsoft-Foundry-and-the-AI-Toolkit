@@ -2,11 +2,11 @@
   "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "resourcePrefix": {
-      "value": "juyoo-brk441-zava-agent-workshop"
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
     },
     "location": {
-      "value": "eastus"
+      "value": "${AZURE_LOCATION}"
     },
     "aiProjectFriendlyName": {
       "value": "Zava Agent Service Workshop"
