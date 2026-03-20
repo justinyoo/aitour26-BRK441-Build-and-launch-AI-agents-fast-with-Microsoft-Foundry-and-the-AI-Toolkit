@@ -21,6 +21,18 @@ param logAnalyticsWorkspaceId string
 @secure()
 param postgresPassword string
 
+@description('Azure AI Foundry project endpoint')
+param aiFoundryEndpoint string
+
+@description('Model deployment name')
+param modelDeploymentName string
+
+@description('Azure AI Foundry account name for RBAC')
+param foundryAccountName string
+
+// URL-encode the password so special chars (like @) don't break the connection string
+var postgresUrlEncodedPassword = uriComponent(postgresPassword)
+
 // Resource names
 var acrName = toLower('acrzava${uniqueSuffix}')
 var containerAppsEnvName = toLower('cae-${uniqueSuffix}')
@@ -101,6 +113,14 @@ resource postgres 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // 2. Sales Analysis MCP Server
+module salesAnalysisFetchLatestImage './fetch-container-image.bicep' = {
+  name: 'sales-analyst-fetch-image'
+  params: {
+    exists: false
+    name: salesAnalysisName
+  }
+}
+
 resource salesAnalysis 'Microsoft.App/containerApps@2024-03-01' = {
   name: salesAnalysisName
   location: location
@@ -116,7 +136,8 @@ resource salesAnalysis 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       secrets: [
         { name: 'acr-password', value: acr.listCredentials().passwords[0].value }
-        { name: 'postgres-url', value: 'postgresql://store_manager:${postgresPassword}@${postgresName}:5432/zava' }
+        #disable-next-line BCP225
+        { name: 'postgres-url', value: 'postgresql://store_manager:${postgresUrlEncodedPassword}@${postgresName}:5432/zava?sslmode=disable' }
       ]
       ingress: {
         external: false
@@ -128,7 +149,7 @@ resource salesAnalysis 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'mcp-sales-analysis'
-          image: '${acr.properties.loginServer}/mcp-sales-analysis:latest'
+          image: salesAnalysisFetchLatestImage.outputs.?containers[?0].?image ?? 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -151,6 +172,14 @@ resource salesAnalysis 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // 3. Customer Sales MCP Server
+module customerSalesFetchLatestImage './fetch-container-image.bicep' = {
+  name: 'customer-sales-fetch-image'
+  params: {
+    exists: false
+    name: customerSalesName
+  }
+}
+
 resource customerSales 'Microsoft.App/containerApps@2024-03-01' = {
   name: customerSalesName
   location: location
@@ -166,7 +195,8 @@ resource customerSales 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       secrets: [
         { name: 'acr-password', value: acr.listCredentials().passwords[0].value }
-        { name: 'postgres-url', value: 'postgresql://store_manager:${postgresPassword}@${postgresName}:5432/zava' }
+        #disable-next-line BCP225
+        { name: 'postgres-url', value: 'postgresql://store_manager:${postgresUrlEncodedPassword}@${postgresName}:5432/zava?sslmode=disable' }
       ]
       ingress: {
         external: false
@@ -178,7 +208,7 @@ resource customerSales 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'mcp-customer-sales'
-          image: '${acr.properties.loginServer}/mcp-customer-sales:latest'
+          image: customerSalesFetchLatestImage.outputs.?containers[?0].?image ?? 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -189,7 +219,7 @@ resource customerSales 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: 1
         maxReplicas: 3
       }
     }
@@ -201,9 +231,20 @@ resource customerSales 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 // 4. Web App
+module webAppFetchLatestImage './fetch-container-image.bicep' = {
+  name: 'web-app-fetch-image'
+  params: {
+    exists: false
+    name: webAppName
+  }
+}
+
 resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: webAppName
   location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     managedEnvironmentId: containerAppsEnv.id
     configuration: {
@@ -227,12 +268,14 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'web-app'
-          image: '${acr.properties.loginServer}/web-app:latest'
+          image: webAppFetchLatestImage.outputs.?containers[?0].?image ?? 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
           }
           env: [
+            { name: 'AZURE_AI_FOUNDRY_ENDPOINT', value: aiFoundryEndpoint }
+            { name: 'MODEL_DEPLOYMENT_NAME', value: modelDeploymentName }
             { name: 'MCP_SALES_ANALYSIS_URL', value: 'http://${salesAnalysisName}' }
             { name: 'MCP_CUSTOMER_SALES_URL', value: 'http://${customerSalesName}' }
           ]
@@ -251,6 +294,25 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
   ]
 }
 
+// var cognitiveServicesOpenAIUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+// var azureAIDeveloperRoleId = '64702f94-c441-49e6-a78b-ef80e0188fee'
+// Azure AI User role scoped to the Foundry account (includes agents/write data action)
+var azureAIUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+
+resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = {
+  name: foundryAccountName
+}
+
+resource webAppRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, webApp.id, azureAIUserRoleId)
+  scope: foundryAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAIUserRoleId)
+    principalId: webApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Outputs
 output acrName string = acr.name
 output acrLoginServer string = acr.properties.loginServer
@@ -260,3 +322,4 @@ output webAppUrl string = 'https://${webApp.properties.configuration.ingress.fqd
 output postgresAppName string = postgres.name
 output salesAnalysisAppName string = salesAnalysis.name
 output customerSalesAppName string = customerSales.name
+output webAppPrincipalId string = webApp.identity.principalId

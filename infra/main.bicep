@@ -127,6 +127,9 @@ module containerApps 'container-apps.bicep' = {
     tags: rootTags
     logAnalyticsWorkspaceId: applicationInsights.outputs.logAnalyticsWorkspaceId
     postgresPassword: postgresPassword
+    aiFoundryEndpoint: '${foundry.outputs.endpoint}api/projects/${foundryProject.outputs.aiProjectName}'
+    modelDeploymentName: models[0].name
+    foundryAccountName: foundry.outputs.accountName
   }
 }
 
@@ -147,3 +150,5 @@ output acrName string = containerApps.outputs.acrName
 output acrLoginServer string = containerApps.outputs.acrLoginServer
 output containerAppsEnvName string = containerApps.outputs.containerAppsEnvName
 output webAppUrl string = containerApps.outputs.webAppUrl
+
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerApps.outputs.acrLoginServer

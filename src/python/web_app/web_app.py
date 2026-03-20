@@ -25,7 +25,7 @@ STATIC_DIR = SHARED_STATIC_DIR if SHARED_STATIC_DIR.exists() else Path("static")
 TEMPLATES_DIR = STATIC_DIR if STATIC_DIR.exists() else Path("templates")
 
 # Agent Framework imports
-from agent_framework import RawAgent, MCPStdioTool, Message, Content
+from agent_framework import RawAgent, MCPStdioTool, MCPStreamableHTTPTool, Message, Content
 from agent_framework.azure import AzureAIClient
 from azure.identity.aio import DefaultAzureCredential
 
@@ -66,21 +66,38 @@ ENDPOINT = os.environ.get("AZURE_AI_FOUNDRY_ENDPOINT", "your_foundry_endpoint_he
 MODEL_DEPLOYMENT_NAME = os.environ.get("MODEL_DEPLOYMENT_NAME", "gpt-4.1-mini")
 AGENT_NAME = "cora-web-agent"
 MCP_PYTHON_COMMAND = os.environ.get("MCP_PYTHON_COMMAND", sys.executable)
+MCP_CUSTOMER_SALES_URL = os.environ.get("MCP_CUSTOMER_SALES_URL")
 
-def create_mcp_tools() -> list[MCPStdioTool]:
-    """Create MCP tools for the agent"""
-    return [
-        MCPStdioTool(
-            name="zava_customer_sales_stdio",
-            description="MCP server for Zava customer sales analysis",
-            command=MCP_PYTHON_COMMAND,
-            args=[
-                "/workspace/src/python/mcp_server/customer_sales/customer_sales.py",
-                "--stdio",
-                "--RLS_USER_ID=00000000-0000-0000-0000-000000000000",
-            ]
-        ),
-    ]
+def create_mcp_tools() -> list:
+    """Create MCP tools for the agent.
+    
+    Uses MCPStreamableHTTPTool when MCP_CUSTOMER_SALES_URL is set (Azure Container Apps),
+    otherwise falls back to MCPStdioTool for local development.
+    """
+    if MCP_CUSTOMER_SALES_URL:
+        logger.info(f"Using remote MCP server at {MCP_CUSTOMER_SALES_URL}")
+        return [
+            MCPStreamableHTTPTool(
+                name="zava_customer_sales_http",
+                description="MCP server for Zava customer sales analysis",
+                url=f"{MCP_CUSTOMER_SALES_URL}/mcp",
+                headers={"x-rls-user-id": "00000000-0000-0000-0000-000000000000"},
+            ),
+        ]
+    else:
+        logger.info("Using local MCP server via stdio")
+        return [
+            MCPStdioTool(
+                name="zava_customer_sales_stdio",
+                description="MCP server for Zava customer sales analysis",
+                command=MCP_PYTHON_COMMAND,
+                args=[
+                    "/workspace/src/python/mcp_server/customer_sales/customer_sales.py",
+                    "--stdio",
+                    "--RLS_USER_ID=00000000-0000-0000-0000-000000000000",
+                ]
+            ),
+        ]
 
 app = FastAPI(title="AI Agent Chat Demo", version="1.0.0")
 

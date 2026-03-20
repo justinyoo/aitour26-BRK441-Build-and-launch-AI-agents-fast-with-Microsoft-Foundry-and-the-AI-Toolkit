@@ -44,7 +44,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
 
 # Create MCP server with lifespan support
-mcp = FastMCP("mcp-zava-sales", lifespan=app_lifespan, stateless_http=True)
+mcp = FastMCP("mcp-zava-sales", lifespan=app_lifespan, stateless_http=True, host="0.0.0.0")
 
 
 def get_header(ctx: Context, header_name: str) -> Optional[str]:
