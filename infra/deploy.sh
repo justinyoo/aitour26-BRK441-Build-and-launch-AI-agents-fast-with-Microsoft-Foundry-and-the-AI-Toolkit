@@ -3,7 +3,7 @@
 echo "Deploying the Azure resources..."
 
 # Define resource group parameters
-RG_LOCATION="westus"
+RG_LOCATION="koreacentral"
 AI_PROJECT_FRIENDLY_NAME="Zava Agent Service Workshop"
 
 # Deploy the Azure resources and save output to JSON

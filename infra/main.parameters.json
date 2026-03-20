@@ -3,7 +3,7 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "resourcePrefix": {
-      "value": "zava-agent-workshop"
+      "value": "juyoo-brk441-zava-agent-workshop"
     },
     "location": {
       "value": "eastus"
@@ -16,6 +16,20 @@
     },
     "models": {
       "value": [
+        {
+          "name": "gpt-5-mini",
+          "format": "OpenAI",
+          "version": "2025-08-07",
+          "skuName": "GlobalStandard",
+          "capacity": 140
+        },
+        {
+          "name": "gpt-4.1-mini",
+          "format": "OpenAI",
+          "version": "2025-04-14",
+          "skuName": "GlobalStandard",
+          "capacity": 140
+        },
         {
           "name": "gpt-4o-mini",
           "format": "OpenAI",
